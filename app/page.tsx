@@ -20,17 +20,20 @@ type Product = {
   prepTime: string
 }
 
-const initialProducts: Product[] = [
-  { id: 1, code: '001', description: 'Café coado', active: true, unit: 'UN', group: 'BEBIDAS', price: '6,50', barcode: '7890000000011', ncm: '0901.21.00', optional: false, prepTime: '05 min' },
-  { id: 2, code: '002', description: 'Pão de queijo', active: true, unit: 'UN', group: 'PAES DE QUEIJO', price: '5,00', barcode: '7890000000028', ncm: '1905.90.90', optional: false, prepTime: '08 min' },
-  { id: 3, code: '003', description: 'Brigadeiro gourmet', active: true, unit: 'UN', group: 'DOCES', price: '4,50', barcode: '7890000000035', ncm: '1704.90.90', optional: true, prepTime: '—' },
-  { id: 4, code: '004', description: 'Sanduíche especial', active: false, unit: 'UN', group: 'ESPECIAL', price: '18,90', barcode: '7890000000042', ncm: '1602.32.00', optional: false, prepTime: '12 min' },
+const initialProducts: Product[] = []
+
+const templateHeaders = [
+  'Código', 'Descrição', 'Ativo S/N', 'Descrição Detalhada', 'Unidade', 'Grupo Venda', 'Valor Venda',
+  'Codigo Classificação', 'Código Produto Principal', 'Acompanhamento?', 'Codigo Linha Produto', 'Opcional?',
+  'Codigo Barras', 'NCM', 'LST', 'CEST', 'Código Exceção Tabela IPI', ' Valor Produto Nível Superior?',
+  'Codigo Integração', 'Codigo Produto Referencia', 'Mix de produto?', 'Valor Mix', 'Tempo Preparo',
+  'Quantidade Fracionada?', 'Considera TC por Produto?', 'Taxa Serviço?', 'Local Consumo AA One',
+  'Descricao AA One', 'Maior Dezoito AA One?', 'Tela Oferta AA One?', 'Produto Combinado PDV One?',
+  'Exibir produto na pré conta (venda mesa)', 'Produto auxiliar para lançamento', 'Codigo de Integração de Unidade',
+  'Cód. Etiqueta QRCode',
 ]
 
-const defaultColumns: Column[] = [
-  { key: 'code', label: 'Código' }, { key: 'description', label: 'Descrição' }, { key: 'unit', label: 'Unidade' }, { key: 'group', label: 'Grupo de venda' },
-  { key: 'price', label: 'Valor de venda' }, { key: 'barcode', label: 'Código de barras' }, { key: 'ncm', label: 'NCM' }, { key: 'prepTime', label: 'Tempo preparo' },
-]
+const defaultColumns: Column[] = templateHeaders.map((header) => ({ key: header, label: header }))
 
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>
@@ -40,9 +43,9 @@ export default function Page() {
   const [products, setProducts] = useState(initialProducts)
   const [query, setQuery] = useState('')
   const [activeOnly, setActiveOnly] = useState(false)
-  const [selected, setSelected] = useState<number | null>(1)
+  const [selected, setSelected] = useState<number | null>(null)
   const [saved, setSaved] = useState(false)
-  const [modelName, setModelName] = useState('Produto Venda 1')
+  const [modelName, setModelName] = useState('Modelo vazio')
   const [sheetColumns, setSheetColumns] = useState<Column[]>(defaultColumns)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -62,9 +65,15 @@ export default function Page() {
 
     const workbook = read(await file.arrayBuffer(), { cellDates: true })
     const sheetName = workbook.SheetNames[0]
-    const rows = utils.sheet_to_json<SpreadsheetRow>(workbook.Sheets[sheetName], { defval: '' })
-    const headers = rows.length > 0 ? Object.keys(rows[0]) : []
+    const worksheet = workbook.Sheets[sheetName]
+    const rows = utils.sheet_to_json<SpreadsheetRow>(worksheet, { defval: '' })
+    const matrix = utils.sheet_to_json<(string | number | boolean | null)[]>(worksheet, { header: 1, defval: '' })
+    const headers = rows.length > 0 ? Object.keys(rows[0]) : ((matrix[0] ?? []).map(String).filter(Boolean))
     const importedColumns = headers.map((header) => ({ key: header, label: header }))
+
+    if (headers.length > 0) {
+      setSheetColumns(importedColumns)
+    }
 
     if (rows.length > 0 && headers.length > 0) {
       setSheetColumns(importedColumns)
@@ -83,7 +92,7 @@ export default function Page() {
         ...row,
       })))
       setModelName(file.name.replace(/\\.xlsx?$/i, ''))
-      setSelected(1)
+      setSelected(rows.length > 0 ? 1 : null)
       setSaved(false)
     }
 
@@ -91,7 +100,7 @@ export default function Page() {
   }
 
   function addProduct() {
-    const id = Math.max(...products.map((product) => product.id)) + 1
+    const id = products.length > 0 ? Math.max(...products.map((product) => product.id)) + 1 : 1
     setProducts((current) => [...current, { id, code: String(id).padStart(3, '0'), description: 'Novo produto', active: true, unit: 'UN', group: 'GERAL', price: '0,00', barcode: '', ncm: '', optional: false, prepTime: '—' }])
     setSelected(id)
     setSaved(false)
@@ -121,7 +130,7 @@ export default function Page() {
 
           <div className="notice"><div className="notice-icon">i</div><div><strong>Modelo ativo: {modelName}</strong><span>As alterações respeitam as colunas e regras definidas no modelo da empresa.</span></div><button aria-label="Fechar aviso">×</button></div>
 
-          <div className="stats"><div><span className="stat-label">TOTAL DE PRODUTOS</span><strong>{products.length}</strong><small className="positive">↑ 3 este mês</small></div><div><span className="stat-label">ATIVOS</span><strong>{products.filter((product) => product.active).length}</strong><small>disponíveis para venda</small></div><div><span className="stat-label">COM PENDÊNCIAS</span><strong className="warning-text">2</strong><small>campos para revisar</small></div><div><span className="stat-label">MODELO</span><strong className="model-name">Produto Venda 1</strong><small>35 colunas configuradas</small></div></div>
+          <div className="stats"><div><span className="stat-label">TOTAL DE PRODUTOS</span><strong>{products.length}</strong><small className="positive">↑ 3 este mês</small></div><div><span className="stat-label">ATIVOS</span><strong>{products.filter((product) => product.active).length}</strong><small>disponíveis para venda</small></div><div><span className="stat-label">COM PENDÊNCIAS</span><strong className="warning-text">2</strong><small>campos para revisar</small></div><div><span className="stat-label">MODELO</span><strong className="model-name">{modelName}</strong><small>35 colunas configuradas</small></div></div>
 
           <section className="editor-card"><div className="card-toolbar"><div className="search-wrap"><Icon>⌕</Icon><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por código, nome ou grupo..." aria-label="Buscar produtos" /></div><label className="check-label"><input type="checkbox" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} /> Mostrar apenas ativos</label><button className="filter-button"><Icon>≡</Icon> Filtros <span>2</span></button><button className="view-button" aria-label="Opções de visualização">▦</button></div>
             <div className="table-meta"><span><strong>{filteredProducts.length}</strong> produtos encontrados</span><span className="edit-hint"><span className="blue-dot" /> Clique em qualquer célula para editar</span></div>
