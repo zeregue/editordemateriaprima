@@ -55,12 +55,25 @@ export default function Page() {
   }), [products, query, activeOnly])
 
   function updateProduct(id: number, key: keyof Product, value: string | boolean) {
-    setProducts((current) => current.map((product) => product.id === id ? { ...product, [key]: value } : product))
+    const nextValue = typeof value === 'string' && (/^ncm$/i.test(String(key)) || /^cest$/i.test(String(key)))
+      ? normalizeFiscalCode(value)
+      : value
+    setProducts((current) => current.map((product) => product.id === id ? { ...product, [key]: nextValue } : product))
     setSaved(false)
   }
 
   function cleanValue(value: unknown) {
     return String(value ?? '').replace(/^'/, '').trim()
+  }
+
+  function normalizeFiscalCode(value: unknown) {
+    const cleaned = cleanValue(value)
+    return cleaned ? cleaned.replace(/\D/g, '').padStart(8, '0').slice(-8) : ''
+  }
+
+  function normalizeTemplateValue(column: string, value: unknown) {
+    if (/^ncm$/i.test(column) || /^cest$/i.test(column)) return normalizeFiscalCode(value)
+    return cleanValue(value)
   }
 
   function buildProduct(row: SpreadsheetRow, index: number): Product {
@@ -114,8 +127,8 @@ export default function Page() {
         'Unidade de medida': cleanValue(row.unidade),
         'Valor Unitario': cleanValue(row['preço de custo']),
         'Codigo de Barras': cleanValue(row.codbarra),
-        'Ncm': cleanValue(row.NCM),
-        'Cest': cleanValue(row.CEST),
+        'Ncm': normalizeFiscalCode(row.NCM),
+        'Cest': normalizeFiscalCode(row.CEST),
       }
       return { ...mapped, id: index + 1 }
     })
@@ -135,7 +148,7 @@ export default function Page() {
 
   function exportExcel() {
     const rows = products.map((product) => Object.fromEntries(
-      sheetColumns.map((column) => [column.label, product[column.key as keyof Product] ?? '']),
+      sheetColumns.map((column) => [column.label, normalizeTemplateValue(column.label, product[column.key as keyof Product] ?? '')]),
     ))
     const worksheet = utils.json_to_sheet(rows, { header: sheetColumns.map((column) => column.label) })
     const workbook = utils.book_new()
