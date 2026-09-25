@@ -1,6 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { read, utils } from 'xlsx'
+
+ type SpreadsheetRow = Record<string, string | number | boolean>
+ type Column = { key: string; label: string }
 
 type Product = {
   id: number
@@ -23,10 +27,10 @@ const initialProducts: Product[] = [
   { id: 4, code: '004', description: 'Sanduíche especial', active: false, unit: 'UN', group: 'ESPECIAL', price: '18,90', barcode: '7890000000042', ncm: '1602.32.00', optional: false, prepTime: '12 min' },
 ]
 
-const columns = [
-  ['code', 'Código'], ['description', 'Descrição'], ['unit', 'Unidade'], ['group', 'Grupo de venda'],
-  ['price', 'Valor de venda'], ['barcode', 'Código de barras'], ['ncm', 'NCM'], ['prepTime', 'Tempo preparo'],
-] as const
+const defaultColumns: Column[] = [
+  { key: 'code', label: 'Código' }, { key: 'description', label: 'Descrição' }, { key: 'unit', label: 'Unidade' }, { key: 'group', label: 'Grupo de venda' },
+  { key: 'price', label: 'Valor de venda' }, { key: 'barcode', label: 'Código de barras' }, { key: 'ncm', label: 'NCM' }, { key: 'prepTime', label: 'Tempo preparo' },
+]
 
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>
@@ -38,6 +42,9 @@ export default function Page() {
   const [activeOnly, setActiveOnly] = useState(false)
   const [selected, setSelected] = useState<number | null>(1)
   const [saved, setSaved] = useState(false)
+  const [modelName, setModelName] = useState('Produto Venda 1')
+  const [sheetColumns, setSheetColumns] = useState<Column[]>(defaultColumns)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const filteredProducts = useMemo(() => products.filter((product) => {
     const matchesQuery = `${product.code} ${product.description} ${product.group}`.toLowerCase().includes(query.toLowerCase())
@@ -47,6 +54,40 @@ export default function Page() {
   function updateProduct(id: number, key: keyof Product, value: string | boolean) {
     setProducts((current) => current.map((product) => product.id === id ? { ...product, [key]: value } : product))
     setSaved(false)
+  }
+
+  async function handleExcelUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const workbook = read(await file.arrayBuffer(), { cellDates: true })
+    const sheetName = workbook.SheetNames[0]
+    const rows = utils.sheet_to_json<SpreadsheetRow>(workbook.Sheets[sheetName], { defval: '' })
+    const headers = rows.length > 0 ? Object.keys(rows[0]) : []
+    const importedColumns = headers.map((header) => ({ key: header, label: header }))
+
+    if (rows.length > 0 && headers.length > 0) {
+      setSheetColumns(importedColumns)
+      setProducts(rows.map((row, index) => ({
+        id: index + 1,
+        code: String(row[headers[0]] ?? '').trim(),
+        description: String(row[headers[1]] ?? `Produto ${index + 1}`).trim(),
+        active: true,
+        unit: String(row[headers[2]] ?? 'UN').trim(),
+        group: String(row[headers[3]] ?? 'GERAL').trim(),
+        price: String(row[headers[4]] ?? '').trim(),
+        barcode: String(row[headers[5]] ?? '').trim(),
+        ncm: String(row[headers[6]] ?? '').trim(),
+        optional: false,
+        prepTime: String(row[headers[7]] ?? '—').trim(),
+        ...row,
+      })))
+      setModelName(file.name.replace(/\\.xlsx?$/i, ''))
+      setSelected(1)
+      setSaved(false)
+    }
+
+    event.target.value = ''
   }
 
   function addProduct() {
@@ -76,15 +117,15 @@ export default function Page() {
       <section className="workspace" id="editor">
         <header className="topbar"><div className="breadcrumb"><span>Produtos e vendas</span><i>/</i><strong>Editor de produtos</strong></div><div className="top-actions"><span className="status-dot" /> Última sincronização há 2 min <button className="help" aria-label="Ajuda">?</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de produtos</h1><p>Edite os produtos no formato padrão da sua empresa.</p></div><div className="heading-actions"><button className="button secondary"><Icon>⇩</Icon> Importar Excel</button><button className="button primary" onClick={addProduct}><Icon>＋</Icon> Novo produto</button></div></div>
+          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de produtos</h1><p>Edite os produtos no formato padrão da sua empresa.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar Excel</button><button className="button primary" onClick={addProduct}><Icon>＋</Icon> Novo produto</button></div></div>
 
-          <div className="notice"><div className="notice-icon">i</div><div><strong>Modelo ativo: Produto Venda 1</strong><span>As alterações respeitam as colunas e regras definidas no modelo da empresa.</span></div><button aria-label="Fechar aviso">×</button></div>
+          <div className="notice"><div className="notice-icon">i</div><div><strong>Modelo ativo: {modelName}</strong><span>As alterações respeitam as colunas e regras definidas no modelo da empresa.</span></div><button aria-label="Fechar aviso">×</button></div>
 
           <div className="stats"><div><span className="stat-label">TOTAL DE PRODUTOS</span><strong>{products.length}</strong><small className="positive">↑ 3 este mês</small></div><div><span className="stat-label">ATIVOS</span><strong>{products.filter((product) => product.active).length}</strong><small>disponíveis para venda</small></div><div><span className="stat-label">COM PENDÊNCIAS</span><strong className="warning-text">2</strong><small>campos para revisar</small></div><div><span className="stat-label">MODELO</span><strong className="model-name">Produto Venda 1</strong><small>35 colunas configuradas</small></div></div>
 
           <section className="editor-card"><div className="card-toolbar"><div className="search-wrap"><Icon>⌕</Icon><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por código, nome ou grupo..." aria-label="Buscar produtos" /></div><label className="check-label"><input type="checkbox" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} /> Mostrar apenas ativos</label><button className="filter-button"><Icon>≡</Icon> Filtros <span>2</span></button><button className="view-button" aria-label="Opções de visualização">▦</button></div>
             <div className="table-meta"><span><strong>{filteredProducts.length}</strong> produtos encontrados</span><span className="edit-hint"><span className="blue-dot" /> Clique em qualquer célula para editar</span></div>
-            <div className="table-scroll"><table><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar todos" /></th><th>Status</th>{columns.map(([, label]) => <th key={label}>{label}{['Código', 'Descrição', 'Valor de venda'].includes(label) && <span className="sort">↕</span>}</th>)}<th /></tr></thead><tbody>{filteredProducts.map((product) => <tr key={product.id} className={selected === product.id ? 'selected-row' : ''} onClick={() => setSelected(product.id)}><td className="select-col"><input type="checkbox" checked={selected === product.id} onChange={() => setSelected(product.id)} aria-label={`Selecionar ${product.description}`} /></td><td><button className={`toggle ${product.active ? 'on' : ''}`} onClick={(event) => { event.stopPropagation(); updateProduct(product.id, 'active', !product.active) }} aria-label={`Alternar status de ${product.description}`}><span /></button></td>{columns.map(([key]) => <td key={key}><input className="cell-input" value={String(product[key])} onChange={(event) => updateProduct(product.id, key, event.target.value)} onClick={(event) => event.stopPropagation()} aria-label={`${key} de ${product.description}`} /></td>)}<td><button className="row-more" aria-label={`Mais opções para ${product.description}`}>•••</button></td></tr>)}</tbody></table></div>
+            <div className="table-scroll"><table><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar todos" /></th><th>Status</th>{sheetColumns.map((column) => <th key={column.key}>{column.label}{['Código', 'Descrição', 'Valor de venda'].includes(column.label) && <span className="sort">↕</span>}</th>)}<th /></tr></thead><tbody>{filteredProducts.map((product) => <tr key={product.id} className={selected === product.id ? 'selected-row' : ''} onClick={() => setSelected(product.id)}><td className="select-col"><input type="checkbox" checked={selected === product.id} onChange={() => setSelected(product.id)} aria-label={`Selecionar ${product.description}`} /></td><td><button className={`toggle ${product.active ? 'on' : ''}`} onClick={(event) => { event.stopPropagation(); updateProduct(product.id, 'active', !product.active) }} aria-label={`Alternar status de ${product.description}`}><span /></button></td>{sheetColumns.map((column) => <td key={column.key}><input className="cell-input" value={String(product[column.key as keyof Product] ?? '')} onChange={(event) => updateProduct(product.id, column.key as keyof Product, event.target.value)} onClick={(event) => event.stopPropagation()} aria-label={`${column.label} de ${product.description}`} /></td>)}<td><button className="row-more" aria-label={`Mais opções para ${product.description}`}>•••</button></td></tr>)}</tbody></table></div>
             <div className="table-footer"><span>Exibindo {filteredProducts.length} de {products.length} produtos</span><div className="pagination"><button disabled>‹</button><button className="current">1</button><button>2</button><button>3</button><button>›</button></div><button className="save-button" onClick={() => setSaved(true)}>{saved ? 'Alterações salvas' : 'Salvar alterações'} <span>⌘ S</span></button></div>
           </section>
           <footer className="page-footer"><span><span className="green-dot" /> Todas as alterações são salvas no histórico</span><span>Modelo v1.4 · Atualizado em 12/06/2024</span></footer>
