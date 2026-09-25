@@ -77,14 +77,22 @@ export default function Page() {
     return String(value ?? '').replace(/^'+|'+$/g, '').replace(/\D/g, '')
   }
 
-  function normalizeFiscalCode(value: unknown) {
+  function cleanNumeric(value: unknown) {
+    return String(value ?? '')
+      .replace(/^'+|'+$/g, '')
+      .replace(/[^0-9,.-]/g, '')
+  }
+
+  function normalizeFiscalCode(value: unknown, length = 8) {
     const cleaned = cleanBarcode(value)
-    return cleaned ? cleaned.padStart(8, '0').slice(-8) : ''
+    return cleaned ? cleaned.padStart(length, '0').slice(-length) : ''
   }
 
   function normalizeTemplateValue(column: string, value: unknown) {
-    if (/^ncm$/i.test(column) || /^cest$/i.test(column)) return normalizeFiscalCode(value)
+    if (/^ncm$/i.test(column)) return normalizeFiscalCode(value, 8)
+    if (/^cest$/i.test(column)) return normalizeFiscalCode(value, 7)
     if (/c[oó]digo de barras/i.test(column)) return cleanBarcode(value)
+    if (/valor unit[aá]rio|valor de venda|pre[cç]o/i.test(column)) return cleanNumeric(value)
     return cleanValue(value)
   }
 
@@ -98,9 +106,9 @@ export default function Page() {
       active: cleanValue(row['Ativo S/N']) !== 'N',
       unit: cleanValue(row['Unidade'] ?? row['Unidade de medida'] ?? row.unidade),
       group: cleanValue(row['Grupo Venda'] ?? row['Grupo de Item'] ?? row.FAMILIA),
-      price: cleanValue(row['Valor Venda'] ?? row['Valor Unitario'] ?? row['preço de custo']),
-      barcode: cleanValue(row['Codigo Barras'] ?? row['Codigo de Barras'] ?? row.codbarra),
-      ncm: cleanValue(row.NCM ?? row.Ncm),
+      price: cleanNumeric(row['Valor Venda'] ?? row['Valor Unitario'] ?? row['preço de custo']),
+      barcode: cleanBarcode(row['Codigo Barras'] ?? row['Codigo de Barras'] ?? row.codbarra),
+      ncm: normalizeFiscalCode(row.NCM ?? row.Ncm, 8),
       optional: cleanValue(row['Opcional?']) === 'S',
       prepTime: cleanValue(row['Tempo Preparo']),
       ...row,
@@ -137,10 +145,10 @@ export default function Page() {
         'Ativo S/N': 'S',
         'Tipo de Item': '1',
         'Unidade de medida': cleanValue(row.unidade),
-        'Valor Unitario': cleanValue(row['preço de custo']),
-        'Codigo de Barras': cleanValue(row.codbarra),
-        'Ncm': normalizeFiscalCode(row.NCM),
-        'Cest': normalizeFiscalCode(row.CEST),
+        'Valor Unitario': cleanNumeric(row['preço de custo']),
+        'Codigo de Barras': cleanBarcode(row.codbarra),
+        'Ncm': normalizeFiscalCode(row.NCM, 8),
+        'Cest': normalizeFiscalCode(row.CEST, 7),
       }
       return { ...mapped, id: index + 1 }
     })
