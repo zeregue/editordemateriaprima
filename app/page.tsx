@@ -23,14 +23,12 @@ type Product = {
 const initialProducts: Product[] = []
 
 const templateHeaders = [
-  'Código', 'Descrição', 'Ativo S/N', 'Descrição Detalhada', 'Unidade', 'Grupo Venda', 'Valor Venda',
-  'Codigo Classificação', 'Código Produto Principal', 'Acompanhamento?', 'Codigo Linha Produto', 'Opcional?',
-  'Codigo Barras', 'NCM', 'LST', 'CEST', 'Código Exceção Tabela IPI', ' Valor Produto Nível Superior?',
-  'Codigo Integração', 'Codigo Produto Referencia', 'Mix de produto?', 'Valor Mix', 'Tempo Preparo',
-  'Quantidade Fracionada?', 'Considera TC por Produto?', 'Taxa Serviço?', 'Local Consumo AA One',
-  'Descricao AA One', 'Maior Dezoito AA One?', 'Tela Oferta AA One?', 'Produto Combinado PDV One?',
-  'Exibir produto na pré conta (venda mesa)', 'Produto auxiliar para lançamento', 'Codigo de Integração de Unidade',
-  'Cód. Etiqueta QRCode',
+  'Código', 'Descrição do Item', 'Ativo S/N', 'Despesa', 'Tipo de Item', 'Grupo de Item',
+  'Genero do Produto', 'Unidade de medida', 'Compõe produto de venda S/N', 'Manufaturado S/N',
+  'Valor Unitario', 'Codigo de Barras', 'Codigos de Barras Auxiliares (separados por vírgula)', 'Ncm',
+  'Código Serviço (LST)', 'Código .exc. Tabela IPI', 'Codigo Integracao Item', 'Cest', 'Nve',
+  'Imposto Federal %', 'Imposto Estadual %', 'Imposto Municipal %', 'Layout Tabela (IBPT)',
+  'Código de int. deposito', 'Codigo de Integracao 2', 'Codigo de Integracao Unidade',
 ]
 
 const defaultColumns: Column[] = templateHeaders.map((header) => ({ key: header, label: header }))
@@ -47,7 +45,9 @@ export default function Page() {
   const [saved, setSaved] = useState(false)
   const [modelName, setModelName] = useState('Modelo vazio')
   const [sheetColumns, setSheetColumns] = useState<Column[]>(defaultColumns)
+  const [sourceName, setSourceName] = useState('Nenhuma base importada')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const sourceInputRef = useRef<HTMLInputElement>(null)
 
   const filteredProducts = useMemo(() => products.filter((product) => {
     const matchesQuery = `${product.code} ${product.description} ${product.group}`.toLowerCase().includes(query.toLowerCase())
@@ -59,43 +59,70 @@ export default function Page() {
     setSaved(false)
   }
 
-  async function handleExcelUpload(event: React.ChangeEvent<HTMLInputElement>) {
+  function cleanValue(value: unknown) {
+    return String(value ?? '').replace(/^'/, '').trim()
+  }
+
+  function buildProduct(row: SpreadsheetRow, index: number): Product {
+    const code = cleanValue(row['Código'] ?? row['cod_interno'])
+    const description = cleanValue(row['Descrição'] ?? row['Descrição do Item'] ?? row.desc)
+    return {
+      id: index + 1,
+      code,
+      description,
+      active: cleanValue(row['Ativo S/N']) !== 'N',
+      unit: cleanValue(row['Unidade'] ?? row['Unidade de medida'] ?? row.unidade),
+      group: cleanValue(row['Grupo Venda'] ?? row['Grupo de Item'] ?? row.FAMILIA),
+      price: cleanValue(row['Valor Venda'] ?? row['Valor Unitario'] ?? row['preço de custo']),
+      barcode: cleanValue(row['Codigo Barras'] ?? row['Codigo de Barras'] ?? row.codbarra),
+      ncm: cleanValue(row.NCM ?? row.Ncm),
+      optional: cleanValue(row['Opcional?']) === 'S',
+      prepTime: cleanValue(row['Tempo Preparo']),
+      ...row,
+    }
+  }
+
+  async function handleTemplateUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
-
     const workbook = read(await file.arrayBuffer(), { cellDates: true })
-    const sheetName = workbook.SheetNames[0]
-    const worksheet = workbook.Sheets[sheetName]
-    const rows = utils.sheet_to_json<SpreadsheetRow>(worksheet, { defval: '' })
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
     const matrix = utils.sheet_to_json<(string | number | boolean | null)[]>(worksheet, { header: 1, defval: '' })
-    const headers = rows.length > 0 ? Object.keys(rows[0]) : ((matrix[0] ?? []).map(String).filter(Boolean))
-    const importedColumns = headers.map((header) => ({ key: header, label: header }))
+    const headers = (matrix[0] ?? []).map(String).filter(Boolean)
+    if (headers.length) setSheetColumns(headers.map((header) => ({ key: header, label: header })))
+    setProducts([])
+    setModelName(file.name.replace(/\\.xlsx?$/i, ''))
+    setSourceName('Nenhuma base importada')
+    setSelected(null)
+    setSaved(false)
+    event.target.value = ''
+  }
 
-    if (headers.length > 0) {
-      setSheetColumns(importedColumns)
-    }
-
-    if (rows.length > 0 && headers.length > 0) {
-      setSheetColumns(importedColumns)
-      setProducts(rows.map((row, index) => ({
-        id: index + 1,
-        code: String(row[headers[0]] ?? '').trim(),
-        description: String(row[headers[1]] ?? `Produto ${index + 1}`).trim(),
-        active: true,
-        unit: String(row[headers[2]] ?? 'UN').trim(),
-        group: String(row[headers[3]] ?? 'GERAL').trim(),
-        price: String(row[headers[4]] ?? '').trim(),
-        barcode: String(row[headers[5]] ?? '').trim(),
-        ncm: String(row[headers[6]] ?? '').trim(),
-        optional: false,
-        prepTime: String(row[headers[7]] ?? '—').trim(),
-        ...row,
-      })))
-      setModelName(file.name.replace(/\\.xlsx?$/i, ''))
-      setSelected(rows.length > 0 ? 1 : null)
-      setSaved(false)
-    }
-
+  async function handleSourceUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const workbook = read(await file.arrayBuffer(), { cellDates: true })
+    const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes('mater'))
+    if (!sheetName) return
+    const rows = utils.sheet_to_json<SpreadsheetRow>(workbook.Sheets[sheetName], { defval: '' })
+    const mappedRows = rows.map((row, index) => {
+      const mapped: SpreadsheetRow = {
+        'Código': cleanValue(row.cod_interno),
+        'Descrição do Item': cleanValue(row.desc),
+        'Ativo S/N': 'S',
+        'Tipo de Item': '1',
+        'Unidade de medida': cleanValue(row.unidade),
+        'Valor Unitario': cleanValue(row['preço de custo']),
+        'Codigo de Barras': cleanValue(row.codbarra),
+        'Ncm': cleanValue(row.NCM),
+        'Cest': cleanValue(row.CEST),
+      }
+      return { ...mapped, id: index + 1 }
+    })
+    setProducts(mappedRows.map(buildProduct))
+    setSourceName(`${rows.length} matérias-primas importadas`)
+    setSelected(rows.length ? 1 : null)
+    setSaved(false)
     event.target.value = ''
   }
 
@@ -137,7 +164,7 @@ export default function Page() {
       <section className="workspace" id="editor">
         <header className="topbar"><div className="breadcrumb"><span>Produtos e vendas</span><i>/</i><strong>Editor de produtos</strong></div><div className="top-actions"><span className="status-dot" /> Última sincronização há 2 min <button className="help" aria-label="Ajuda">?</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de produtos</h1><p>Edite os produtos no formato padrão da sua empresa.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar Excel</button><button className="button secondary" onClick={exportExcel}><Icon>⇧</Icon> Exportar Excel</button><button className="button primary" onClick={addProduct}><Icon>＋</Icon> Novo produto</button></div></div>
+          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de matérias-primas</h1><p>Use o modelo vazio como base e preencha somente os campos existentes.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleTemplateUpload} hidden /><input ref={sourceInputRef} type="file" accept=".xlsx,.xls" onChange={handleSourceUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar modelo vazio</button><button className="button secondary" onClick={() => sourceInputRef.current?.click()}><Icon>⇩</Icon> Importar matérias-primas</button><button className="button secondary" onClick={exportExcel}><Icon>⇧</Icon> Exportar Excel</button></div></div>
 
           <div className="notice"><div className="notice-icon">i</div><div><strong>Modelo ativo: {modelName}</strong><span>As alterações respeitam as colunas e regras definidas no modelo da empresa.</span></div><button aria-label="Fechar aviso">×</button></div>
 
