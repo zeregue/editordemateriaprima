@@ -63,16 +63,28 @@ export default function Page() {
   }
 
   function cleanValue(value: unknown) {
-    return String(value ?? '').replace(/^'/, '').trim()
+    return String(value ?? '')
+      .replace(/^'+|'+$/g, '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase()
+  }
+
+  function cleanBarcode(value: unknown) {
+    return String(value ?? '').replace(/^'+|'+$/g, '').replace(/\D/g, '')
   }
 
   function normalizeFiscalCode(value: unknown) {
-    const cleaned = cleanValue(value)
-    return cleaned ? cleaned.replace(/\D/g, '').padStart(8, '0').slice(-8) : ''
+    const cleaned = cleanBarcode(value)
+    return cleaned ? cleaned.padStart(8, '0').slice(-8) : ''
   }
 
   function normalizeTemplateValue(column: string, value: unknown) {
     if (/^ncm$/i.test(column) || /^cest$/i.test(column)) return normalizeFiscalCode(value)
+    if (/c[oó]digo de barras/i.test(column)) return cleanBarcode(value)
     return cleanValue(value)
   }
 
