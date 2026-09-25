@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { read, utils } from 'xlsx'
+import { read, utils, writeFile } from 'xlsx'
 
  type SpreadsheetRow = Record<string, string | number | boolean>
  type Column = { key: string; label: string }
@@ -106,6 +106,17 @@ export default function Page() {
     setSaved(false)
   }
 
+  function exportExcel() {
+    const rows = products.map((product) => Object.fromEntries(
+      sheetColumns.map((column) => [column.label, product[column.key as keyof Product] ?? '']),
+    ))
+    const worksheet = utils.json_to_sheet(rows, { header: sheetColumns.map((column) => column.label) })
+    const workbook = utils.book_new()
+    utils.book_append_sheet(workbook, worksheet, 'Produtos')
+    writeFile(workbook, `${modelName || 'modelo-produtos'}-editado.xlsx`)
+    setSaved(true)
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -126,7 +137,7 @@ export default function Page() {
       <section className="workspace" id="editor">
         <header className="topbar"><div className="breadcrumb"><span>Produtos e vendas</span><i>/</i><strong>Editor de produtos</strong></div><div className="top-actions"><span className="status-dot" /> Última sincronização há 2 min <button className="help" aria-label="Ajuda">?</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de produtos</h1><p>Edite os produtos no formato padrão da sua empresa.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar Excel</button><button className="button primary" onClick={addProduct}><Icon>＋</Icon> Novo produto</button></div></div>
+          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de produtos</h1><p>Edite os produtos no formato padrão da sua empresa.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar Excel</button><button className="button secondary" onClick={exportExcel}><Icon>⇧</Icon> Exportar Excel</button><button className="button primary" onClick={addProduct}><Icon>＋</Icon> Novo produto</button></div></div>
 
           <div className="notice"><div className="notice-icon">i</div><div><strong>Modelo ativo: {modelName}</strong><span>As alterações respeitam as colunas e regras definidas no modelo da empresa.</span></div><button aria-label="Fechar aviso">×</button></div>
 
