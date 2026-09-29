@@ -46,6 +46,8 @@ export default function Page() {
   const [modelName, setModelName] = useState('Modelo vazio')
   const [sheetColumns, setSheetColumns] = useState<Column[]>(defaultColumns)
   const [sourceName, setSourceName] = useState('Nenhuma base importada')
+  const [activeView, setActiveView] = useState<'overview' | 'editor' | 'imports' | 'help'>('overview')
+  const [importHistory, setImportHistory] = useState<{ name: string; rows: number; date: string }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sourceInputRef = useRef<HTMLInputElement>(null)
 
@@ -154,6 +156,7 @@ export default function Page() {
     })
     setProducts(mappedRows.map(buildProduct))
     setSourceName(`${rows.length} matérias-primas importadas`)
+    setImportHistory((current) => [{ name: file.name, rows: rows.length, date: new Date().toLocaleString('pt-BR') }, ...current])
     setSelected(rows.length ? 1 : null)
     setSaved(false)
     event.target.value = ''
@@ -183,13 +186,12 @@ export default function Page() {
         <div className="brand"><div className="brand-mark">C</div><div><strong>cadastro<span>+</span></strong><small>Gestão operacional</small></div></div>
         <nav aria-label="Navegação principal">
           <p className="nav-label">MENU PRINCIPAL</p>
-          <a className="nav-item" href="#"><Icon>⌂</Icon> Visão geral</a>
-          <a className="nav-item active" href="#editor"><Icon>▦</Icon> Produtos e vendas <b>24</b></a>
-          <a className="nav-item" href="#"><Icon>⇄</Icon> Importações</a>
-          <a className="nav-item" href="#"><Icon>↗</Icon> Exportações</a>
-          <p className="nav-label space">CONFIGURAÇÕES</p>
-          <a className="nav-item" href="#"><Icon>⚙</Icon> Regras do cadastro</a>
-          <a className="nav-item" href="#"><Icon>?</Icon> Central de ajuda</a>
+          <button className={`nav-item ${activeView === 'overview' ? 'active' : ''}`} onClick={() => setActiveView('overview')}><Icon>⌂</Icon> Visão geral</button>
+          <button className={`nav-item ${activeView === 'editor' ? 'active' : ''}`} onClick={() => setActiveView('editor')}><Icon>▦</Icon> Produtos e vendas <b>{products.length}</b></button>
+          <button className={`nav-item ${activeView === 'imports' ? 'active' : ''}`} onClick={() => setActiveView('imports')}><Icon>⇄</Icon> Importações</button>
+          <button className="nav-item" onClick={() => setActiveView('editor')}><Icon>↗</Icon> Exportações</button>
+          <p className="nav-label space">SUPORTE</p>
+          <button className={`nav-item ${activeView === 'help' ? 'active' : ''}`} onClick={() => setActiveView('help')}><Icon>?</Icon> Central de ajuda</button>
         </nav>
         <div className="sidebar-bottom"><div className="avatar">MS</div><div><strong>Marina Silva</strong><small>Administradora</small></div><button className="more" aria-label="Mais opções">•••</button></div>
       </aside>
@@ -197,7 +199,10 @@ export default function Page() {
       <section className="workspace" id="editor">
         <header className="topbar"><div className="breadcrumb"><span>Produtos e vendas</span><i>/</i><strong>Editor de produtos</strong></div><div className="top-actions"><span className="status-dot" /> Última sincronização há 2 min <button className="help" aria-label="Ajuda">?</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de matérias-primas</h1><p>Use o modelo vazio como base e preencha somente os campos existentes.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleTemplateUpload} hidden /><input ref={sourceInputRef} type="file" accept=".xlsx,.xls" onChange={handleSourceUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar modelo vazio</button><button className="button secondary" onClick={() => sourceInputRef.current?.click()}><Icon>⇩</Icon> Importar matérias-primas</button><button className="button secondary" onClick={exportExcel}><Icon>⇧</Icon> Exportar Excel</button></div></div>
+          {activeView === 'overview' && <section className="overview-panel"><div className="eyebrow">PAINEL DE CONTROLE</div><h1>Visão geral</h1><p>Acompanhe sua operação de cadastro em um só lugar.</p><div className="overview-grid"><div className="overview-card"><span>MATÉRIAS-PRIMAS</span><strong>{products.length}</strong><small>itens no modelo atual</small></div><div className="overview-card"><span>IMPORTAÇÕES</span><strong>{importHistory.length}</strong><small>arquivos processados</small></div><div className="overview-card"><span>MODELO ATIVO</span><strong className="overview-model">{modelName}</strong><small>estrutura configurada</small></div></div><div className="overview-actions"><button className="button primary" onClick={() => setActiveView('editor')}>Abrir editor de produtos</button><button className="button secondary" onClick={() => setActiveView('imports')}>Ver histórico de importações</button></div></section>}
+          {activeView === 'imports' && <section className="overview-panel"><div className="eyebrow">RASTREABILIDADE</div><h1>Histórico de importações</h1><p>Consulte os arquivos utilizados para preencher o modelo.</p><div className="history-card">{importHistory.length === 0 ? <div className="empty-state"><strong>Nenhuma importação realizada</strong><span>Quando você enviar uma planilha de matérias-primas, ela aparecerá aqui.</span></div> : importHistory.map((item) => <div className="history-row" key={`${item.name}-${item.date}`}><div className="file-badge">XLSX</div><div><strong>{item.name}</strong><small>{item.rows} matérias-primas · {item.date}</small></div><span className="history-status">Concluída</span></div>)}</div></section>}
+          {activeView === 'help' && <section className="overview-panel help-panel"><div className="eyebrow">CENTRAL DE AJUDA</div><h1>Como usar a plataforma</h1><p>Veja o passo a passo para configurar e exportar seu cadastro.</p><div className="help-grid"><div className="tutorial-video" aria-label="Vídeo demonstrativo"><div className="video-screen"><div className="play-circle">▶</div><span>Vídeo demonstrativo</span><small>Importe, revise e exporte em poucos passos</small></div><div className="video-controls"><span>0:42</span><div className="video-line"/><span>1×</span></div></div><div className="tutorial-copy"><h2>Passo a passo</h2><ol><li><strong>Importe o modelo vazio</strong><span>Envie a planilha que define as colunas da sua empresa.</span></li><li><strong>Envie as matérias-primas</strong><span>O sistema encaixa somente os dados nos campos existentes.</span></li><li><strong>Revise e exporte</strong><span>Confira os dados tratados e clique em Exportar Excel.</span></li></ol></div></div></section>}
+          <div className={`editor-only ${activeView === 'editor' ? '' : 'hidden-view'}`}><div className="page-heading"><div><div className="eyebrow">CATÁLOGO OPERACIONAL</div><h1>Editor de matérias-primas</h1><p>Use o modelo vazio como base e preencha somente os campos existentes.</p></div><div className="heading-actions"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleTemplateUpload} hidden /><input ref={sourceInputRef} type="file" accept=".xlsx,.xls" onChange={handleSourceUpload} hidden /><button className="button secondary" onClick={() => fileInputRef.current?.click()}><Icon>⇩</Icon> Importar modelo vazio</button><button className="button secondary" onClick={() => sourceInputRef.current?.click()}><Icon>⇩</Icon> Importar matérias-primas</button><button className="button secondary" onClick={exportExcel}><Icon>⇧</Icon> Exportar Excel</button></div></div>
 
           <div className="notice"><div className="notice-icon">i</div><div><strong>Modelo ativo: {modelName}</strong><span>As alterações respeitam as colunas e regras definidas no modelo da empresa.</span></div><button aria-label="Fechar aviso">×</button></div>
 
@@ -208,7 +213,7 @@ export default function Page() {
             <div className="table-scroll"><table><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar todos" /></th><th>Status</th>{sheetColumns.map((column) => <th key={column.key}>{column.label}{['Código', 'Descrição', 'Valor de venda'].includes(column.label) && <span className="sort">↕</span>}</th>)}<th /></tr></thead><tbody>{filteredProducts.map((product) => <tr key={product.id} className={selected === product.id ? 'selected-row' : ''} onClick={() => setSelected(product.id)}><td className="select-col"><input type="checkbox" checked={selected === product.id} onChange={() => setSelected(product.id)} aria-label={`Selecionar ${product.description}`} /></td><td><button className={`toggle ${product.active ? 'on' : ''}`} onClick={(event) => { event.stopPropagation(); updateProduct(product.id, 'active', !product.active) }} aria-label={`Alternar status de ${product.description}`}><span /></button></td>{sheetColumns.map((column) => <td key={column.key}><input className="cell-input" value={String(product[column.key as keyof Product] ?? '')} onChange={(event) => updateProduct(product.id, column.key as keyof Product, event.target.value)} onClick={(event) => event.stopPropagation()} aria-label={`${column.label} de ${product.description}`} /></td>)}<td><button className="row-more" aria-label={`Mais opções para ${product.description}`}>•••</button></td></tr>)}</tbody></table></div>
             <div className="table-footer"><span>Exibindo {filteredProducts.length} de {products.length} produtos</span><div className="pagination"><button disabled>‹</button><button className="current">1</button><button>2</button><button>3</button><button>›</button></div><button className="save-button" onClick={() => setSaved(true)}>{saved ? 'Alterações salvas' : 'Salvar alterações'} <span>⌘ S</span></button></div>
           </section>
-          <footer className="page-footer"><span><span className="green-dot" /> Todas as alterações são salvas no histórico</span><span>Modelo v1.4 · Atualizado em 12/06/2024</span></footer>
+          <footer className="page-footer"><span><span className="green-dot" /> Todas as alterações são salvas no histórico</span><span>Modelo v1.4 · Atualizado em 12/06/2024</span></footer></div>
         </div>
       </section>
     </main>
